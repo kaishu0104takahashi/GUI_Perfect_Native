@@ -14,7 +14,8 @@ public class MainViewModel : ViewModelBase
         get => _currentViewModel;
         set { _currentViewModel = value; RaisePropertyChanged(); UpdateViewStatus(value); }
     }
-    
+
+    // 古い判定フラグ（互換性のため残すが、レイアウト判定には下を使う）
     private bool _isGalleryActive = false;
     public bool IsGalleryActive
     {
@@ -22,7 +23,14 @@ public class MainViewModel : ViewModelBase
         set { _isGalleryActive = value; RaisePropertyChanged(); }
     }
 
-    // --- 動画表示用プロパティ ---
+    // 【新規】レイアウト制御用フラグ（これがTrueならカメラを消して全画面にする）
+    private bool _isFullScreen = false;
+    public bool IsFullScreen
+    {
+        get => _isFullScreen;
+        set { _isFullScreen = value; RaisePropertyChanged(); }
+    }
+
     private Bitmap? _cameraImage;
     public Bitmap? CameraImage
     {
@@ -30,7 +38,6 @@ public class MainViewModel : ViewModelBase
         set { _cameraImage = value; RaisePropertyChanged(); }
     }
 
-    // --- 映像更新の一時停止フラグ (新規追加) ---
     private bool _isCameraPaused = false;
     public bool IsCameraPaused
     {
@@ -38,19 +45,13 @@ public class MainViewModel : ViewModelBase
         set { _isCameraPaused = value; RaisePropertyChanged(); }
     }
 
-    // --- UDP受信サービス ---
     private readonly UdpVideoReceiver _udpReceiver;
 
     public MainViewModel()
     {
-        // 初期画面
-        _currentViewModel = new HomeViewModel(this);
-
-        // UDP受信サービスの初期化
         _udpReceiver = new UdpVideoReceiver(50000);
-        
-        // コールバック設定: ポーズ中でなければ画像を更新
-        _udpReceiver.OnFrameReady = (bitmap) => 
+
+        _udpReceiver.OnFrameReady = (bitmap) =>
         {
             if (!IsCameraPaused)
             {
@@ -58,19 +59,29 @@ public class MainViewModel : ViewModelBase
             }
         };
 
-        // 受信開始
-        _udpReceiver.Start();
+        // 起動時は時刻設定（全画面）→ 完了後にホーム（分割画面）＆カメラ開始
+        _currentViewModel = new TimeSettingViewModel(() =>
+        {
+            _udpReceiver.Start();
+            Navigate(new HomeViewModel(this));
+        });
+        
+        // 初期状態のレイアウト更新
+        UpdateViewStatus(_currentViewModel);
     }
-    
+
     public void Navigate(ViewModelBase viewModel)
     {
         CurrentViewModel = viewModel;
     }
-    
+
     private void UpdateViewStatus(ViewModelBase viewModel)
     {
         IsGalleryActive = viewModel is GalleryViewModel;
-        // 画面遷移時は念のためポーズを解除（必要に応じて調整）
+        
+        // 【変更点】ギャラリー または 時刻設定なら「全画面モード」にする
+        IsFullScreen = (viewModel is GalleryViewModel) || (viewModel is TimeSettingViewModel);
+
         IsCameraPaused = false;
     }
 
