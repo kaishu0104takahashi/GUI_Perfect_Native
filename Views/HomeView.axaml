@@ -9,10 +9,16 @@
         </Border>
 
         <StackPanel Grid.Row="1" Spacing="20" Margin="40,30">
-            <Button Content="撮影" Command="{Binding CaptureCommand}"
+            <Button Content="撮影 (簡易)" Command="{Binding CaptureCommand}"
                     HorizontalAlignment="Stretch" Height="65" FontSize="20" FontWeight="Bold"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                     CornerRadius="8"/>
+
+            <Button Content="測定モード" Command="{Binding MeasurementCommand}"
+                    HorizontalAlignment="Stretch" Height="80" FontSize="24" FontWeight="Bold"
+                    Background="#007ACC" Foreground="White"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    CornerRadius="8" Margin="0,10"/>
 
             <Button Content="ギャラリー" Command="{Binding GalleryCommand}"
                     HorizontalAlignment="Stretch" Height="65" FontSize="20" FontWeight="Bold"

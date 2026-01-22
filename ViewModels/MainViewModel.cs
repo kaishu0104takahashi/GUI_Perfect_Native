@@ -15,7 +15,7 @@ public class MainViewModel : ViewModelBase
         set { _currentViewModel = value; RaisePropertyChanged(); UpdateViewStatus(value); }
     }
 
-    // 古い判定フラグ（互換性のため残すが、レイアウト判定には下を使う）
+    // 古い判定フラグ（互換性のため残す）
     private bool _isGalleryActive = false;
     public bool IsGalleryActive
     {
@@ -23,7 +23,7 @@ public class MainViewModel : ViewModelBase
         set { _isGalleryActive = value; RaisePropertyChanged(); }
     }
 
-    // 【新規】レイアウト制御用フラグ（これがTrueならカメラを消して全画面にする）
+    // レイアウト制御用フラグ（これがTrueならカメラを消して全画面にする）
     private bool _isFullScreen = false;
     public bool IsFullScreen
     {
@@ -66,7 +66,6 @@ public class MainViewModel : ViewModelBase
             Navigate(new HomeViewModel(this));
         });
         
-        // 初期状態のレイアウト更新
         UpdateViewStatus(_currentViewModel);
     }
 
@@ -79,8 +78,10 @@ public class MainViewModel : ViewModelBase
     {
         IsGalleryActive = viewModel is GalleryViewModel;
         
-        // 【変更点】ギャラリー または 時刻設定なら「全画面モード」にする
-        IsFullScreen = (viewModel is GalleryViewModel) || (viewModel is TimeSettingViewModel);
+        // 【変更点】測定モード(MeasurementViewModel)も全画面にする
+        IsFullScreen = (viewModel is GalleryViewModel) || 
+                       (viewModel is TimeSettingViewModel) ||
+                       (viewModel is MeasurementViewModel);
 
         IsCameraPaused = false;
     }
