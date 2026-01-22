@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Windows.Input;
 using Avalonia.Media.Imaging;
@@ -21,7 +22,6 @@ public class GalleryDateGroupViewModel : ViewModelBase
 {
     public string DateHeader { get; }
     public ObservableCollection<GalleryItemViewModel> Items { get; } = new();
-
     public GalleryDateGroupViewModel(IGrouping<string, InspectionRecord> group, GalleryViewModel parentVM)
     {
         if (DateTime.TryParseExact(group.Key, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
@@ -45,8 +45,6 @@ public class GalleryViewModel : ViewModelBase
     private readonly MainViewModel _main;
     private readonly DatabaseService _dbService;
     private List<InspectionRecord> _allRecords = new();
-    
-    // フィルタリング済みのフラットなリスト
     private List<InspectionRecord> _filteredRecordsList = new();
 
     public ObservableCollection<GalleryDateGroupViewModel> DisplayGroups { get; } = new();
@@ -65,7 +63,7 @@ public class GalleryViewModel : ViewModelBase
         get => _isDeleteMode;
         set 
         { 
-            _isDeleteMode = value; 
+            _isDeleteMode = value;
             RaisePropertyChanged(); 
             if(value) IsRenameMode = false;
             UpdateItemsMode();
@@ -96,13 +94,38 @@ public class GalleryViewModel : ViewModelBase
         set { _showRenameDialog = value; RaisePropertyChanged(); }
     }
     
+    // --- 検索用キーボード管理 ---
+    private bool _isSearchKeyboardVisible = false;
+    public bool IsSearchKeyboardVisible
+    {
+        get => _isSearchKeyboardVisible;
+        set { _isSearchKeyboardVisible = value; RaisePropertyChanged(); }
+    }
+
+    // --- 大文字小文字管理 ---
+    private bool _isUpperCase = true;
+    public bool IsUpperCase
+    {
+        get => _isUpperCase;
+        set 
+        { 
+            _isUpperCase = value; 
+            RaisePropertyChanged(); 
+            RaisePropertyChanged(nameof(CapsButtonText));
+            RaisePropertyChanged(nameof(CapsButtonColor));
+        }
+    }
+    public string CapsButtonText => IsUpperCase ? "A" : "a";
+    public string CapsButtonColor => IsUpperCase ? "#007ACC" : "#888888";
+
+
     private string _renameInput = "";
     public string RenameInput
     {
         get => _renameInput;
         set 
         {
-            if (Regex.IsMatch(value, "^[a-zA-Z0-9_-]*$"))
+            if (string.IsNullOrEmpty(value) || Regex.IsMatch(value, "^[a-zA-Z0-9_-]*$"))
             {
                 _renameInput = value;
                 RaisePropertyChanged();
@@ -166,6 +189,22 @@ public class GalleryViewModel : ViewModelBase
     public ICommand ExecuteRenameCommand { get; }
     public ICommand CancelRenameCommand { get; }
     
+    // キーボード共通コマンド
+    public ICommand ToggleCaseCommand { get; }
+
+    // 名前変更用
+    public ICommand KeyboardAppendCommand { get; }
+    public ICommand KeyboardBackspaceCommand { get; }
+    public ICommand KeyboardClearCommand { get; }
+
+    // 検索用
+    public ICommand OpenSearchKeyboardCommand { get; }
+    public ICommand CloseSearchKeyboardCommand { get; }
+    public ICommand SearchKeyboardAppendCommand { get; }
+    public ICommand SearchKeyboardBackspaceCommand { get; }
+    public ICommand SearchKeyboardClearCommand { get; }
+
+
     public ICommand ShowDetailCommand { get; }
     public ICommand BackToListCommand { get; }
     public ICommand BackCommand { get; }
@@ -180,12 +219,9 @@ public class GalleryViewModel : ViewModelBase
             if (IsDeleteMode || IsRenameMode) QuitModes();
             else _main.Navigate(new HomeViewModel(_main));
         });
-
         BackToListCommand = new RelayCommand(ExecuteBackToList);
         
-        // リストからのクリックは常に「先頭から」表示
         ShowDetailCommand = new RelayCommand<InspectionRecord>(r => OpenDetail(r, startFromEnd: false));
-
         HeaderDeleteButtonCommand = new RelayCommand(() =>
         {
             if (!IsDeleteMode) IsDeleteMode = true;
@@ -195,7 +231,6 @@ public class GalleryViewModel : ViewModelBase
                 else QuitModes();
             }
         });
-        
         HeaderRenameButtonCommand = new RelayCommand(() => { IsRenameMode = !IsRenameMode; });
 
         ExecuteDeleteConfirmCommand = new RelayCommand(PerformDeletion);
@@ -204,9 +239,60 @@ public class GalleryViewModel : ViewModelBase
         ExecuteRenameCommand = new RelayCommand(PerformRename);
         CancelRenameCommand = new RelayCommand(() => { ShowRenameDialog = false; _targetItemForRename = null; });
 
+        // Caps切り替え
+        ToggleCaseCommand = new RelayCommand(() => IsUpperCase = !IsUpperCase);
+
+        // 名前変更用キーボード
+        KeyboardAppendCommand = new LocalRelayCommand<string>(key => 
+        {
+            string text = key;
+            if (!IsUpperCase && text.Length == 1 && char.IsLetter(text[0])) text = text.ToLower();
+            RenameInput += text;
+        });
+        KeyboardBackspaceCommand = new RelayCommand(() => 
+        {
+            if (!string.IsNullOrEmpty(RenameInput)) RenameInput = RenameInput.Substring(0, RenameInput.Length - 1);
+        });
+        KeyboardClearCommand = new RelayCommand(() => RenameInput = "");
+
+        // 検索用キーボード
+        OpenSearchKeyboardCommand = new RelayCommand(() => IsSearchKeyboardVisible = true);
+        CloseSearchKeyboardCommand = new RelayCommand(() => IsSearchKeyboardVisible = false);
+        SearchKeyboardAppendCommand = new LocalRelayCommand<string>(key => 
+        {
+            string text = key;
+            if (!IsUpperCase && text.Length == 1 && char.IsLetter(text[0])) text = text.ToLower();
+            SearchText += text;
+        });
+        SearchKeyboardBackspaceCommand = new RelayCommand(() => 
+        {
+            if (!string.IsNullOrEmpty(SearchText)) SearchText = SearchText.Substring(0, SearchText.Length - 1);
+        });
+        SearchKeyboardClearCommand = new RelayCommand(() => SearchText = "");
+
+        RunReorderScript();
         LoadData();
     }
     
+    private void RunReorderScript()
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "python3",
+                Arguments = "/home/shikoku-pc/db/reorder_db.py",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using (var process = Process.Start(psi))
+            {
+                process?.WaitForExit();
+            }
+        }
+        catch (Exception ex) { Console.WriteLine($"Reorder Script Error: {ex.Message}"); }
+    }
+
     public void OnItemClicked(GalleryItemViewModel item)
     {
         if (IsRenameMode)
@@ -268,6 +354,7 @@ public class GalleryViewModel : ViewModelBase
             }
         }
 
+        RunReorderScript();
         QuitModes();
         LoadData();
     }
@@ -275,7 +362,6 @@ public class GalleryViewModel : ViewModelBase
     private void PerformRename()
     {
         if (_targetItemForRename == null || string.IsNullOrWhiteSpace(RenameInput)) return;
-
         string oldName = _targetItemForRename.Record.SaveName;
         string newName = RenameInput;
         string oldPath = _targetItemForRename.Record.SaveAbsolutePath;
@@ -309,8 +395,6 @@ public class GalleryViewModel : ViewModelBase
         catch (Exception ex) { Console.WriteLine($"Rename Error: {ex.Message}"); }
     }
 
-    // --- 【修正】詳細画面を開く処理 ---
-    // startFromEnd: trueなら最後の画像から表示、falseなら最初の画像から表示
     public void OpenDetail(InspectionRecord? record, bool startFromEnd)
     {
         if (IsDeleteMode || IsRenameMode || record == null) return;
@@ -346,20 +430,17 @@ public class GalleryViewModel : ViewModelBase
             bool matchType = (r.Type == 0 && ShowSimple) || (r.Type == 1 && ShowPrecision);
             return matchText && matchType;
         })
-        .OrderByDescending(g => g.Date); 
-
+        .OrderByDescending(g => g.Date);
         _filteredRecordsList = filteredQuery.ToList();
 
         var grouped = filteredQuery
             .GroupBy(r => r.Date.Length >= 10 ? r.Date.Substring(0, 10) : r.Date);
-
         foreach (var group in grouped)
         {
             DisplayGroups.Add(new GalleryDateGroupViewModel(group, this));
         }
     }
 
-    // --- レコード間移動ロジック ---
     public bool CanGoNextRecord(InspectionRecord current)
     {
         int index = _filteredRecordsList.FindIndex(r => r.Id == current.Id);
@@ -377,7 +458,6 @@ public class GalleryViewModel : ViewModelBase
         int index = _filteredRecordsList.FindIndex(r => r.Id == current.Id);
         if (index >= 0 && index < _filteredRecordsList.Count - 1)
         {
-            // 次へ (右) 押下時 -> 次のレコードの「先頭」へ
             OpenDetail(_filteredRecordsList[index + 1], startFromEnd: false);
         }
     }
@@ -387,7 +467,6 @@ public class GalleryViewModel : ViewModelBase
         int index = _filteredRecordsList.FindIndex(r => r.Id == current.Id);
         if (index > 0)
         {
-            // 前へ (左) 押下時 -> 前のレコードの「末尾」へ
             OpenDetail(_filteredRecordsList[index - 1], startFromEnd: true);
         }
     }
@@ -426,14 +505,12 @@ public class GalleryItemViewModel : ViewModelBase
     public GalleryItemViewModel(InspectionRecord record, GalleryViewModel parentVM)
     {
         Record = record;
-        
         ItemClickCommand = new RelayCommand(() => 
         {
             if (parentVM.IsDeleteMode) IsSelected = !IsSelected;
             else if (parentVM.IsRenameMode) parentVM.OnItemClicked(this);
             else parentVM.ShowDetailCommand.Execute(record);
         });
-        
         try
         {
             if (File.Exists(record.ThumbnailPath))
@@ -452,36 +529,27 @@ public class GalleryDetailViewModel : ViewModelBase
 {
     private readonly GalleryViewModel _parentVM;
     public InspectionRecord Record { get; }
-    
     private List<Bitmap> _images = new();
-    
     private Bitmap? _currentImage;
     public Bitmap? CurrentImage
     {
         get => _currentImage;
         set { _currentImage = value; RaisePropertyChanged(); }
     }
-
     private int _currentPageIndex = 0;
-    
     public string PageIndicator => _images.Count > 0 ? $"{_currentPageIndex + 1} / {_images.Count}" : "";
-    
     public bool CanGoPreviousImage => _currentPageIndex > 0;
     public bool CanGoNextImage => _currentPageIndex < _images.Count - 1;
-
     public bool CanMovePrevious => CanGoPreviousImage || _parentVM.CanGoPreviousRecord(Record);
     public bool CanMoveNext => CanGoNextImage || _parentVM.CanGoNextRecord(Record);
-
     public string TypeLabel => Record.Type == 0 ? "簡易検査" : "精密検査";
     public string FormattedDate => DateTime.TryParseExact(Record.Date, "yyyy-MM-dd-HH-mm-ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
         ? date.ToString("yyyy年MM月dd日 HH時mm分ss秒") : Record.Date;
     public string BoardInfo => "基板情報: 取得中";
-    
     public ICommand CloseDetailCommand { get; }
     public ICommand MoveNextCommand { get; }
     public ICommand MovePreviousCommand { get; }
 
-    // --- 【修正】コンストラクタで開始位置(startFromEnd)を受け取る ---
     public GalleryDetailViewModel(InspectionRecord record, GalleryViewModel parent, bool startFromEnd)
     {
         Record = record;
@@ -511,24 +579,14 @@ public class GalleryDetailViewModel : ViewModelBase
             }
         }
 
-        // --- 初期表示画像の設定 ---
         if (_images.Count > 0)
         {
-            if (startFromEnd)
-            {
-                // 後ろからアクセスされた場合は最後の画像を表示
-                _currentPageIndex = _images.Count - 1;
-            }
-            else
-            {
-                // 通常または前からアクセスされた場合は最初の画像
-                _currentPageIndex = 0;
-            }
+            if (startFromEnd) _currentPageIndex = _images.Count - 1;
+            else _currentPageIndex = 0;
             CurrentImage = _images[_currentPageIndex];
         }
         
         UpdateNavigationState();
-
         MoveNextCommand = new RelayCommand(() =>
         {
             if (CanGoNextImage)
@@ -542,7 +600,6 @@ public class GalleryDetailViewModel : ViewModelBase
                 _parentVM.GoToNextRecord(Record);
             }
         });
-
         MovePreviousCommand = new RelayCommand(() =>
         {
             if (CanGoPreviousImage)
