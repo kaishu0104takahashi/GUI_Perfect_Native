@@ -3,120 +3,121 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia.Media.Imaging;
+using GUI_Perfect.Models;
 using GUI_Perfect.Services;
 
 namespace GUI_Perfect.ViewModels;
 
 public class SimpleInspectViewModel : ViewModelBase
 {
-    private readonly MainViewModel _main;
+    public MainViewModel Main { get; }
     private readonly DatabaseService _dbService;
 
-    // --- UIの状態管理 ---
-    
-    private string _statusMessage = "撮影ボタンを押してください";
+    private Bitmap? _capturedImage;
+    public Bitmap? CapturedImage
+    {
+        get => _capturedImage;
+        set { _capturedImage = value; RaisePropertyChanged(); }
+    }
+
+    private bool _isCaptured;
+    public bool IsCaptured
+    {
+        get => _isCaptured;
+        set { _isCaptured = value; RaisePropertyChanged(); }
+    }
+
+    private string _statusMessage = "検査対象をセットして\n撮影ボタンを押してください";
     public string StatusMessage
     {
         get => _statusMessage;
         set { _statusMessage = value; RaisePropertyChanged(); }
     }
 
-    private bool _isMonitoring = true; // 撮影待機中
-    public bool IsMonitoring
-    {
-        get => _isMonitoring;
-        set { _isMonitoring = value; RaisePropertyChanged(); }
-    }
-
-    private bool _isReviewing = false; // 画像確認中
-    public bool IsReviewing
-    {
-        get => _isReviewing;
-        set { _isReviewing = value; RaisePropertyChanged(); }
-    }
-
-    // 撮影した画像のキャッシュ
-    public Bitmap? CapturedImage { get; set; }
-
-    // --- コマンド ---
+    public ICommand BackCommand { get; }
     public ICommand CaptureCommand { get; }
     public ICommand RetakeCommand { get; }
-    public ICommand ConfirmCaptureCommand { get; }
-    public ICommand BackCommand { get; }
+    public ICommand SaveCommand { get; }
 
     public SimpleInspectViewModel(MainViewModel main)
     {
-        _main = main;
+        Main = main;
         _dbService = new DatabaseService();
 
         BackCommand = new RelayCommand(() => 
         {
-            _main.IsCameraPaused = false;
-            _main.Navigate(new HomeViewModel(_main));
+            Main.IsCameraPaused = false;
+            Main.Navigate(new HomeViewModel(Main));
         });
 
-        // 撮影
+        // 【修正】撮影ロジックの改善
         CaptureCommand = new RelayCommand(() =>
         {
-            if (_main.CameraImage != null)
+            if (Main.CameraImage != null)
             {
-                CapturedImage = _main.CameraImage;
-                _main.IsCameraPaused = true;
+                // 1. 先にカメラを止める（これで映像の更新が止まる）
+                Main.IsCameraPaused = true;
+
+                // 2. 現在の映像を静止画として保持する
+                CapturedImage = Main.CameraImage;
                 
-                IsMonitoring = false;
-                IsReviewing = true;
-                StatusMessage = "この画像でよろしいですか？";
+                // 3. 表示切り替え
+                IsCaptured = true;
+                
+                StatusMessage = "この画像で保存しますか？";
             }
         });
 
-        // 再撮影 (いいえ)
         RetakeCommand = new RelayCommand(() =>
         {
             CapturedImage = null;
-            _main.IsCameraPaused = false;
+            IsCaptured = false;
             
-            IsReviewing = false;
-            IsMonitoring = true;
-            StatusMessage = "撮影ボタンを押してください";
+            // カメラ再開
+            Main.IsCameraPaused = false;
+            StatusMessage = "検査対象をセットして\n撮影ボタンを押してください";
         });
 
-        // 画像OK (はい) -> 即座に日時で保存
-        ConfirmCaptureCommand = new RelayCommand(() =>
+        SaveCommand = new RelayCommand(async () =>
         {
-            string dateStr = DateTime.Now.ToString("yyyy-MM-dd-HH-mm-ss");
-            SaveProcess(dateStr);
-        });
-    }
+            if (CapturedImage == null) return;
 
-    private void SaveProcess(string saveName)
-    {
-        try
-        {
-            // 環境変数 PIC_PATH があればそれ(コンテナ用)を使い、なければローカル用を使う
-            string basePath = Environment.GetEnvironmentVariable("PIC_PATH") 
-                              ?? "/home/shikoku-pc/pic";
+            StatusMessage = "保存中...";
+            await Task.Delay(50); 
 
-            string saveDir = Path.Combine(basePath, saveName);
-
-            if (!Directory.Exists(saveDir))
+            try
             {
+                string baseDir = "/home/shikoku-pc/pic";
+                string timestamp = DateTime.Now.ToString("yyyy-MM-dd-HH-mm-ss");
+                string saveDir = Path.Combine(baseDir, timestamp);
                 Directory.CreateDirectory(saveDir);
+
+                string filePath = Path.Combine(saveDir, "simple_omote.bmp");
+                CapturedImage.Save(filePath);
+                
+                string thumbPath = Path.Combine(saveDir, "thumb.bmp");
+                CapturedImage.Save(thumbPath);
+
+                _dbService.Initialize();
+                var record = new InspectionRecord
+                {
+                    Date = timestamp,
+                    SaveName = timestamp,
+                    SaveAbsolutePath = saveDir,
+                    ThumbnailPath = thumbPath,
+                    Type = 0,
+                    SimpleOmotePath = filePath
+                };
+                _dbService.InsertInspection(record);
+
+                Main.IsCameraPaused = false;
+                Main.Navigate(new HomeViewModel(Main));
             }
-
-            string fileName = $"{saveName}_omote.jpg";
-            string fullPath = Path.Combine(saveDir, fileName);
-
-            CapturedImage?.Save(fullPath);
-
-            // DB保存
-            _dbService.InsertInspection(saveName, saveDir, saveName, 0);
-
-            _main.IsCameraPaused = false;
-            _main.Navigate(new HomeViewModel(_main));
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"保存エラー: {ex.Message}";
-        }
+            catch (Exception ex)
+            {
+                StatusMessage = $"エラー: {ex.Message}";
+                Console.WriteLine(ex);
+            }
+        });
     }
 }

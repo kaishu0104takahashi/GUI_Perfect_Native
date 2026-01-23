@@ -2,33 +2,20 @@ using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using GUI_Perfect.Services;
 
 namespace GUI_Perfect.ViewModels;
 
 public class MainViewModel : ViewModelBase
 {
+    private readonly UdpVideoReceiver _videoReceiver;
+    
     private ViewModelBase _currentViewModel;
     public ViewModelBase CurrentViewModel
     {
         get => _currentViewModel;
-        set { _currentViewModel = value; RaisePropertyChanged(); UpdateViewStatus(value); }
-    }
-
-    // 古い判定フラグ（互換性のため残す）
-    private bool _isGalleryActive = false;
-    public bool IsGalleryActive
-    {
-        get => _isGalleryActive;
-        set { _isGalleryActive = value; RaisePropertyChanged(); }
-    }
-
-    // レイアウト制御用フラグ（これがTrueならカメラを消して全画面にする）
-    private bool _isFullScreen = false;
-    public bool IsFullScreen
-    {
-        get => _isFullScreen;
-        set { _isFullScreen = value; RaisePropertyChanged(); }
+        set { _currentViewModel = value; RaisePropertyChanged(); }
     }
 
     private Bitmap? _cameraImage;
@@ -37,59 +24,65 @@ public class MainViewModel : ViewModelBase
         get => _cameraImage;
         set { _cameraImage = value; RaisePropertyChanged(); }
     }
-
+    
+    // カメラ停止フラグ
     private bool _isCameraPaused = false;
     public bool IsCameraPaused
     {
         get => _isCameraPaused;
-        set { _isCameraPaused = value; RaisePropertyChanged(); }
+        set 
+        { 
+            _isCameraPaused = value; 
+            if (_videoReceiver != null)
+            {
+                _videoReceiver.IsPaused = value;
+            }
+            RaisePropertyChanged(); 
+        }
     }
 
-    private readonly UdpVideoReceiver _udpReceiver;
+    // 全画面表示判定 (Home画面以外は全画面扱いにしてタスクバー等を隠す)
+    public bool IsFullScreen => !(CurrentViewModel is HomeViewModel);
 
     public MainViewModel()
     {
-        _udpReceiver = new UdpVideoReceiver(50000);
-
-        _udpReceiver.OnFrameReady = (bitmap) =>
+        // 【ここを変更】初期画面を「時刻設定画面」にする
+        // コンストラクタの引数(Action)で、設定完了後の移動先(Home)を指定
+        _currentViewModel = new TimeSettingViewModel(() => 
         {
-            if (!IsCameraPaused)
-            {
-                CameraImage = bitmap;
-            }
-        };
-
-        // 起動時は時刻設定（全画面）→ 完了後にホーム（分割画面）＆カメラ開始
-        _currentViewModel = new TimeSettingViewModel(() =>
-        {
-            _udpReceiver.Start();
+            // 時刻設定が終わったらホームへ移動
             Navigate(new HomeViewModel(this));
         });
+
+        // 初期状態は時刻設定なので、カメラは停止(Pause)にしておく
+        _isCameraPaused = true;
+
+        // カメラ受信準備
+        _videoReceiver = new UdpVideoReceiver(50000);
+        _videoReceiver.OnFrameReady = (bmp) =>
+        {
+            CameraImage = bmp;
+        };
         
-        UpdateViewStatus(_currentViewModel);
+        // Pause状態を同期して開始
+        _videoReceiver.IsPaused = _isCameraPaused;
+        _videoReceiver.Start();
     }
 
     public void Navigate(ViewModelBase viewModel)
     {
         CurrentViewModel = viewModel;
-    }
+        RaisePropertyChanged(nameof(IsFullScreen));
 
-    private void UpdateViewStatus(ViewModelBase viewModel)
-    {
-        IsGalleryActive = viewModel is GalleryViewModel;
-        
-        // 【変更点】測定モード(MeasurementViewModel)も全画面にする
-        IsFullScreen = (viewModel is GalleryViewModel) || 
-                       (viewModel is TimeSettingViewModel) ||
-                       (viewModel is MeasurementViewModel);
-
-        IsCameraPaused = false;
+        // ギャラリーや時刻設定のときはカメラ処理を止めて軽量化する
+        bool shouldPause = (viewModel is GalleryViewModel || viewModel is TimeSettingViewModel);
+        IsCameraPaused = shouldPause;
     }
 
     public void ShutdownApplication()
     {
-        _udpReceiver.Stop();
-        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        _videoReceiver.Stop();
+        if (Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.Shutdown();
         }

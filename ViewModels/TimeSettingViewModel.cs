@@ -2,129 +2,88 @@ using System;
 using System.Diagnostics;
 using System.Windows.Input;
 
-namespace GUI_Perfect.ViewModels
+namespace GUI_Perfect.ViewModels;
+
+public class TimeSettingViewModel : ViewModelBase
 {
-    public class TimeSettingViewModel : ViewModelBase
+    private readonly Action _onBack;
+    
+    // 編集中の日時データ
+    private DateTime _targetDateTime;
+
+    public string Year => _targetDateTime.Year.ToString();
+    public string Month => _targetDateTime.Month.ToString("00");
+    public string Day => _targetDateTime.Day.ToString("00");
+    public string Hour => _targetDateTime.Hour.ToString("00");
+    public string Minute => _targetDateTime.Minute.ToString("00");
+
+    public ICommand BackCommand { get; }
+    public ICommand ApplyCommand { get; }
+    
+    // 増減コマンド
+    public ICommand IncreaseCommand { get; }
+    public ICommand DecreaseCommand { get; }
+
+    public TimeSettingViewModel(Action onBack)
     {
-        private readonly Action _onComplete;
+        _onBack = onBack;
+        // 現在時刻で初期化
+        _targetDateTime = DateTime.Now;
 
-        // --- 手動プロパティ定義 ---
-        private int _year;
-        public int Year { get => _year; set { _year = value; RaisePropertyChanged(); } }
+        BackCommand = new RelayCommand(_onBack);
+        
+        ApplyCommand = new RelayCommand(ApplyTimeSetting);
 
-        private int _month;
-        public int Month { get => _month; set { _month = value; RaisePropertyChanged(); } }
+        IncreaseCommand = new LocalRelayCommand<string>(unit => UpdateTime(unit, 1));
+        DecreaseCommand = new LocalRelayCommand<string>(unit => UpdateTime(unit, -1));
+    }
 
-        private int _day;
-        public int Day { get => _day; set { _day = value; RaisePropertyChanged(); } }
-
-        private int _hour;
-        public int Hour { get => _hour; set { _hour = value; RaisePropertyChanged(); } }
-
-        private int _minute;
-        public int Minute { get => _minute; set { _minute = value; RaisePropertyChanged(); } }
-
-        // --- コマンド定義 ---
-        public ICommand AddYearCommand { get; }
-        public ICommand AddMonthCommand { get; }
-        public ICommand AddDayCommand { get; }
-        public ICommand AddHourCommand { get; }
-        public ICommand AddMinuteCommand { get; }
-        public ICommand ApplyAndStartCommand { get; }
-
-        public TimeSettingViewModel(Action onComplete)
+    private void UpdateTime(string unit, int value)
+    {
+        try
         {
-            _onComplete = onComplete;
-            
-            var now = DateTime.Now;
-            Year = now.Year;
-            Month = now.Month;
-            Day = now.Day;
-            Hour = now.Hour;
-            Minute = now.Minute;
-
-            // 文字列引数を int に変換して渡す
-            AddYearCommand = new LocalRelayCommand<string>(s => AddYear(int.Parse(s)));
-            AddMonthCommand = new LocalRelayCommand<string>(s => AddMonth(int.Parse(s)));
-            AddDayCommand = new LocalRelayCommand<string>(s => AddDay(int.Parse(s)));
-            AddHourCommand = new LocalRelayCommand<string>(s => AddHour(int.Parse(s)));
-            AddMinuteCommand = new LocalRelayCommand<string>(s => AddMinute(int.Parse(s)));
-            
-            // 引数を使わないコマンド
-            ApplyAndStartCommand = new LocalRelayCommand<object>(_ => ApplyAndStart());
+            switch (unit)
+            {
+                case "Year":   _targetDateTime = _targetDateTime.AddYears(value); break;
+                case "Month":  _targetDateTime = _targetDateTime.AddMonths(value); break;
+                case "Day":    _targetDateTime = _targetDateTime.AddDays(value); break;
+                case "Hour":   _targetDateTime = _targetDateTime.AddHours(value); break;
+                case "Minute": _targetDateTime = _targetDateTime.AddMinutes(value); break;
+            }
+            // 全プロパティ更新通知
+            RaisePropertyChanged(nameof(Year));
+            RaisePropertyChanged(nameof(Month));
+            RaisePropertyChanged(nameof(Day));
+            RaisePropertyChanged(nameof(Hour));
+            RaisePropertyChanged(nameof(Minute));
         }
-
-        public void AddYear(int amount) { Year += amount; }
-        public void AddMonth(int amount) { var d = new DateTime(Year, Month, 1).AddMonths(amount); Year = d.Year; Month = d.Month; }
-        public void AddDay(int amount) { try { var d = new DateTime(Year, Month, Day).AddDays(amount); Year = d.Year; Month = d.Month; Day = d.Day; } catch { } }
-        public void AddHour(int amount) { var d = new DateTime(Year, Month, Day, Hour, Minute, 0).AddHours(amount); Day = d.Day; Hour = d.Hour; }
-        public void AddMinute(int amount) { var d = new DateTime(Year, Month, Day, Hour, Minute, 0).AddMinutes(amount); Hour = d.Hour; Minute = d.Minute; }
-
-        public void ApplyAndStart()
+        catch
         {
-            try
-            {
-                var targetTime = new DateTime(Year, Month, Day, Hour, Minute, 0);
-                var timeStr = targetTime.ToString("yyyy-MM-dd HH:mm:ss");
-                
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "sudo",
-                    Arguments = $"date -s \"{timeStr}\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-                Process.Start(psi)?.WaitForExit();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Time set error: {ex.Message}");
-            }
-
-            _onComplete?.Invoke();
+            // 計算不能な日付等は無視
         }
     }
 
-    // --- 警告対策済みのコマンドクラス ---
-    public class LocalRelayCommand<T> : ICommand
+    private void ApplyTimeSetting()
     {
-        private readonly Action<T> _execute;
-        
-        public LocalRelayCommand(Action<T> execute) => _execute = execute;
-
-        // 警告 CS0067 対策: 使わないイベントは空の add/remove にする
-        public event EventHandler? CanExecuteChanged
+        try 
         {
-            add { }
-            remove { }
+            // 日時文字列を作成 (例: "2026-01-23 10:00:00")
+            string timeStr = _targetDateTime.ToString("yyyy-MM-dd HH:mm:00");
+            
+            var psi = new ProcessStartInfo
+            {
+                FileName = "sudo",
+                Arguments = $"date -s \"{timeStr}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            Process.Start(psi);
+            
+            _onBack();
         }
-
-        public bool CanExecute(object? parameter) => true;
-
-        public void Execute(object? parameter)
+        catch (Exception ex)
         {
-            // 警告 CS8604/CS8600 対策: Null安全性を確保
-            try {
-                if (parameter == null) 
-                {
-                    // Tがnull許容ならnullを渡す
-                    if (default(T) == null) _execute(default!);
-                    return;
-                }
-
-                if (typeof(T) == typeof(string))
-                {
-                    _execute((T)(object)parameter.ToString()!);
-                }
-                else 
-                {
-                    var converted = Convert.ChangeType(parameter, typeof(T));
-                    _execute((T)converted!);
-                }
-            } catch { 
-                // 変換失敗時は安全に無視するかデフォルト値を渡す
-                _execute(default!);
-            }
+            Console.WriteLine($"Time Set Error: {ex.Message}");
         }
     }
 }

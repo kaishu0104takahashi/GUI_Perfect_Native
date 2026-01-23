@@ -25,9 +25,12 @@ public class UdpVideoReceiver
     private int _current_payload_length = 0;
     private int _is_rendering = 0;
 
-    // FPS制御用: 33ms = 約30FPS
+    // 【修正】volatileをつけて、停止フラグが即座にスレッド間で共有されるようにする
+    public volatile bool IsPaused = false;
+
+    // 【修正】FPS制限を緩和 (1ms = 1000fps理論値。実質PCの限界まで出す)
     private DateTime _lastFrameTime = DateTime.MinValue;
-    private readonly TimeSpan _frameInterval = TimeSpan.FromMilliseconds(33); 
+    private readonly TimeSpan _frameInterval = TimeSpan.FromMilliseconds(1); 
 
     public Action<Bitmap>? OnFrameReady;
 
@@ -75,10 +78,17 @@ public class UdpVideoReceiver
 
                 if (flag == 1)
                 {
-                    // 描画中でなく、かつ「前回の描画から一定時間経っている」場合のみ処理
+                    // ポーズ中は処理しない
+                    if (IsPaused)
+                    {
+                        _current_payload_length = 0;
+                        continue;
+                    }
+
                     if (Interlocked.CompareExchange(ref _is_rendering, 1, 0) == 0)
                     {
                         var now = DateTime.Now;
+                        // FPS制限チェック
                         if (now - _lastFrameTime >= _frameInterval)
                         {
                             _lastFrameTime = now;
@@ -100,7 +110,7 @@ public class UdpVideoReceiver
         finally
         {
             ArrayPool<byte>.Shared.Return(receive_buffer);
-            _socket.Close();
+            _socket?.Close();
         }
     }
 
@@ -108,13 +118,18 @@ public class UdpVideoReceiver
     {
         try
         {
+            // Bitmap生成
             using (var ms = new MemoryStream(_reassembly_buffer, 0, length, writable: false))
             {
                 var bitmap = new Bitmap(ms);
 
                 Dispatcher.UIThread.Post(() =>
                 {
-                    OnFrameReady?.Invoke(bitmap);
+                    // ポーズされていたらUI更新もしない（念のため）
+                    if (!IsPaused)
+                    {
+                        OnFrameReady?.Invoke(bitmap);
+                    }
                     Interlocked.Exchange(ref _is_rendering, 0);
                 }, DispatcherPriority.Render);
             }

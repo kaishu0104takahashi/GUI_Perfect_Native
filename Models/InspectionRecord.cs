@@ -1,20 +1,23 @@
-using System.IO;
-
 namespace GUI_Perfect.Models;
 
 public class InspectionRecord
 {
     public int Id { get; set; }
+    public string Date { get; set; } = "";
     public string SaveName { get; set; } = "";
     public string SaveAbsolutePath { get; set; } = "";
-    public string Date { get; set; } = "";
-    public int Type { get; set; } // 0: 簡易, 1: 精密
+    public string ThumbnailPath { get; set; } = ""; // setを追加
+    
+    // 0: 簡易, 1: 精密
+    public int Type { get; set; } 
 
-    public string ThumbnailPath => Path.Combine(SaveAbsolutePath, $"{SaveName}_omote.jpg");
-    public string SimpleOmotePath => Path.Combine(SaveAbsolutePath, $"{SaveName}_omote.jpg");
-    public string SimpleUraPath => Path.Combine(SaveAbsolutePath, $"{SaveName}_ura.jpg");
-    public string PrecisionPcbOmotePath => Path.Combine(SaveAbsolutePath, $"{SaveName}_PCB_omote.jpg");
-    public string PrecisionPcbUraPath => Path.Combine(SaveAbsolutePath, $"{SaveName}_PCB_ura.jpg");
-    public string PrecisionCircuitOmotePath => Path.Combine(SaveAbsolutePath, $"{SaveName}_circuit_omote.jpg");
-    public string PrecisionCircuitUraPath => Path.Combine(SaveAbsolutePath, $"{SaveName}_circuit_ura.jpg");
+    // 簡易検査用パス
+    public string SimpleOmotePath { get; set; } = ""; // setを追加
+    public string SimpleUraPath { get; set; } = "";
+
+    // 精密検査用パス
+    public string PrecisionPcbOmotePath { get; set; } = "";
+    public string PrecisionPcbUraPath { get; set; } = "";
+    public string PrecisionCircuitOmotePath { get; set; } = "";
+    public string PrecisionCircuitUraPath { get; set; } = "";
 }
