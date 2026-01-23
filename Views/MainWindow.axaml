@@ -5,7 +5,8 @@
         x:Class="GUI_Perfect.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="基板検査システム (GUI_Perfect)"
-        WindowState="Maximized">
+        WindowState="FullScreen"
+        SystemDecorations="None">
 
     <Design.DataContext>
         <vm:MainViewModel/>

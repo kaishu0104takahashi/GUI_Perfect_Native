@@ -12,10 +12,7 @@ namespace GUI_Perfect.Services;
 
 static class Constants
 {
-    // 再構築用バッファサイズ (4MB)
     public const int ALLOC_BYTE_SIZE = 4 * 1024 * 1024;
-
-    // ソケットの受信バッファサイズ (8MB - カーネルレベルでのドロップを防ぐため大きく取る)
     public const int KERNEL_S_UDP_BUFFER_SIZE = 8 * 1024 * 1024;
 }
 
@@ -24,17 +21,14 @@ public class UdpVideoReceiver
     private Socket? _socket;
     private bool _is_running;
     private readonly int _port;
-
-    // 分割されたパケットを結合するためのバッファ
     private readonly byte[] _reassembly_buffer = new byte[Constants.ALLOC_BYTE_SIZE];
-
-    // 現在のフレームの受信済みデータ長
     private int _current_payload_length = 0;
-
-    // レンダリング中フラグ (Interlockedで使用)
     private int _is_rendering = 0;
 
-    // 画像を受信したときにViewModelへ通知するアクション
+    // FPS制御用: 33ms = 約30FPS
+    private DateTime _lastFrameTime = DateTime.MinValue;
+    private readonly TimeSpan _frameInterval = TimeSpan.FromMilliseconds(33); 
+
     public Action<Bitmap>? OnFrameReady;
 
     public UdpVideoReceiver(int port)
@@ -44,11 +38,7 @@ public class UdpVideoReceiver
 
     public void Start()
     {
-        if (_is_running)
-        {
-            return;
-        }
-
+        if (_is_running) return;
         _is_running = true;
         Task.Run(Receiver_loop);
     }
@@ -56,62 +46,49 @@ public class UdpVideoReceiver
     private async Task Receiver_loop()
     {
         _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-        
-        // 既存のポートバインディングエラーを防ぐためReuseAddressを設定する場合もあるが、今回は標準設定
         _socket.Bind(new IPEndPoint(IPAddress.Any, _port));
-
-        // 受信バッファを拡張
         _socket.ReceiveBufferSize = Constants.KERNEL_S_UDP_BUFFER_SIZE;
-
-        // ArrayPoolから一時的な受信バッファを借りる
         byte[] receive_buffer = ArrayPool<byte>.Shared.Rent(4096);
-
+        
         try
         {
             EndPoint remote_endpoint = new IPEndPoint(IPAddress.Any, 0);
-
             while (_is_running)
             {
-                // 非同期でデータ受信
-                var result = await _socket.ReceiveFromAsync(new Memory<byte>(receive_buffer), 
-                                                         SocketFlags.None, remote_endpoint);
-
+                var result = await _socket.ReceiveFromAsync(new Memory<byte>(receive_buffer), SocketFlags.None, remote_endpoint);
                 int bytes_read = result.ReceivedBytes;
-                
-                // ヘッダ(1byte) + データがない場合は無視
-                if (bytes_read < 2)
-                {
-                    continue;
-                }
 
-                // 受信データをSpanとして扱う
+                if (bytes_read < 2) continue;
+
                 ReadOnlySpan<byte> packet_span = receive_buffer.AsSpan(0, bytes_read);
-
-                // 先頭1バイトはフラグ (0: 続き, 1: フレーム終了)
                 byte flag = packet_span[0];
                 int payload_size = bytes_read - 1;
-             
-                // バッファオーバーフロー対策
+
                 if (_current_payload_length + payload_size > _reassembly_buffer.Length)
                 {
-                    _current_payload_length = 0; // 破損フレームとして破棄
+                    _current_payload_length = 0;
                     continue;
                 }
 
-                // ペイロード部分を結合バッファにコピー
                 packet_span.Slice(1, payload_size).CopyTo(_reassembly_buffer.AsSpan(_current_payload_length));
                 _current_payload_length += payload_size;
 
-                // フレーム終了フラグの場合
                 if (flag == 1)
                 {
-                    // レンダリング中でなければ処理を実行 (ドロップフレーム処理)
+                    // 描画中でなく、かつ「前回の描画から一定時間経っている」場合のみ処理
                     if (Interlocked.CompareExchange(ref _is_rendering, 1, 0) == 0)
                     {
-                        Process_frame(_current_payload_length);
+                        var now = DateTime.Now;
+                        if (now - _lastFrameTime >= _frameInterval)
+                        {
+                            _lastFrameTime = now;
+                            Process_frame(_current_payload_length);
+                        }
+                        else
+                        {
+                            Interlocked.Exchange(ref _is_rendering, 0);
+                        }
                     }
-                    
-                    // 次のフレームのためにリセット
                     _current_payload_length = 0;
                 }
             }
@@ -122,7 +99,6 @@ public class UdpVideoReceiver
         }
         finally
         {
-            // バッファをプールに返却
             ArrayPool<byte>.Shared.Return(receive_buffer);
             _socket.Close();
         }
@@ -132,26 +108,19 @@ public class UdpVideoReceiver
     {
         try
         {
-            // MemoryStreamを作成し、Bitmapに変換
-            // Note: MemoryStreamはバッファをコピーせず参照するため高速ですが、
-            // Bitmap作成完了までは _reassembly_buffer を書き換えてはいけません。
             using (var ms = new MemoryStream(_reassembly_buffer, 0, length, writable: false))
             {
                 var bitmap = new Bitmap(ms);
 
-                // UIスレッドでイベント発火
                 Dispatcher.UIThread.Post(() =>
                 {
                     OnFrameReady?.Invoke(bitmap);
-                    
-                    // 処理完了、レンダリングロック解除
                     Interlocked.Exchange(ref _is_rendering, 0);
                 }, DispatcherPriority.Render);
             }
         }
         catch
         {
-            // エラー時はロックを解除して次へ
             Interlocked.Exchange(ref _is_rendering, 0);
         }
     }
@@ -164,7 +133,7 @@ public class UdpVideoReceiver
             _socket?.Shutdown(SocketShutdown.Both);
             _socket?.Close();
         }
-        catch { /* 無視 */ }
+        catch { }
         finally
         {
             _socket?.Dispose();

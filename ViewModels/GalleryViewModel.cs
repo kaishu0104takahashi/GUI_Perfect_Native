@@ -5,11 +5,13 @@ using System.Diagnostics;
 using System.Linq;
 using System.Windows.Input;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using GUI_Perfect.Models;
 using GUI_Perfect.Services;
 using System.Globalization;
 using System.IO; 
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 namespace GUI_Perfect.ViewModels;
 
@@ -56,7 +58,6 @@ public class GalleryViewModel : ViewModelBase
         set { _currentMode = value; RaisePropertyChanged(); }
     }
 
-    // --- 削除・名前変更モード管理 ---
     private bool _isDeleteMode = false;
     public bool IsDeleteMode
     {
@@ -94,7 +95,6 @@ public class GalleryViewModel : ViewModelBase
         set { _showRenameDialog = value; RaisePropertyChanged(); }
     }
     
-    // --- 検索用キーボード管理 ---
     private bool _isSearchKeyboardVisible = false;
     public bool IsSearchKeyboardVisible
     {
@@ -102,7 +102,6 @@ public class GalleryViewModel : ViewModelBase
         set { _isSearchKeyboardVisible = value; RaisePropertyChanged(); }
     }
 
-    // --- 大文字小文字管理 ---
     private bool _isUpperCase = true;
     public bool IsUpperCase
     {
@@ -117,7 +116,6 @@ public class GalleryViewModel : ViewModelBase
     }
     public string CapsButtonText => IsUpperCase ? "A" : "a";
     public string CapsButtonColor => IsUpperCase ? "#007ACC" : "#888888";
-
 
     private string _renameInput = "";
     public string RenameInput
@@ -188,23 +186,15 @@ public class GalleryViewModel : ViewModelBase
     public ICommand CancelDeleteConfirmCommand { get; }
     public ICommand ExecuteRenameCommand { get; }
     public ICommand CancelRenameCommand { get; }
-    
-    // キーボード共通コマンド
     public ICommand ToggleCaseCommand { get; }
-
-    // 名前変更用
     public ICommand KeyboardAppendCommand { get; }
     public ICommand KeyboardBackspaceCommand { get; }
     public ICommand KeyboardClearCommand { get; }
-
-    // 検索用
     public ICommand OpenSearchKeyboardCommand { get; }
     public ICommand CloseSearchKeyboardCommand { get; }
     public ICommand SearchKeyboardAppendCommand { get; }
     public ICommand SearchKeyboardBackspaceCommand { get; }
     public ICommand SearchKeyboardClearCommand { get; }
-
-
     public ICommand ShowDetailCommand { get; }
     public ICommand BackToListCommand { get; }
     public ICommand BackCommand { get; }
@@ -239,10 +229,8 @@ public class GalleryViewModel : ViewModelBase
         ExecuteRenameCommand = new RelayCommand(PerformRename);
         CancelRenameCommand = new RelayCommand(() => { ShowRenameDialog = false; _targetItemForRename = null; });
 
-        // Caps切り替え
         ToggleCaseCommand = new RelayCommand(() => IsUpperCase = !IsUpperCase);
 
-        // 名前変更用キーボード
         KeyboardAppendCommand = new LocalRelayCommand<string>(key => 
         {
             string text = key;
@@ -255,7 +243,6 @@ public class GalleryViewModel : ViewModelBase
         });
         KeyboardClearCommand = new RelayCommand(() => RenameInput = "");
 
-        // 検索用キーボード
         OpenSearchKeyboardCommand = new RelayCommand(() => IsSearchKeyboardVisible = true);
         CloseSearchKeyboardCommand = new RelayCommand(() => IsSearchKeyboardVisible = false);
         SearchKeyboardAppendCommand = new LocalRelayCommand<string>(key => 
@@ -431,9 +418,12 @@ public class GalleryViewModel : ViewModelBase
             return matchText && matchType;
         })
         .OrderByDescending(g => g.Date);
-        _filteredRecordsList = filteredQuery.ToList();
+        
+        // 【爆速化ポイント1】表示件数を最新の50件に制限する
+        // これ以上見たい場合は検索機能を使ってもらう運用にする
+        _filteredRecordsList = filteredQuery.Take(50).ToList();
 
-        var grouped = filteredQuery
+        var grouped = _filteredRecordsList
             .GroupBy(r => r.Date.Length >= 10 ? r.Date.Substring(0, 10) : r.Date);
         foreach (var group in grouped)
         {
@@ -475,7 +465,14 @@ public class GalleryViewModel : ViewModelBase
 public class GalleryItemViewModel : ViewModelBase
 {
     public InspectionRecord Record { get; }
-    public Bitmap? Thumbnail { get; }
+    
+    private Bitmap? _thumbnail;
+    public Bitmap? Thumbnail 
+    { 
+        get => _thumbnail; 
+        set { _thumbnail = value; RaisePropertyChanged(); }
+    }
+
     public string TypeLabel => Record.Type == 0 ? "簡易" : "精密";
     public string LabelColor => Record.Type == 0 ? "#007ACC" : "#E06C00";
     
@@ -511,17 +508,28 @@ public class GalleryItemViewModel : ViewModelBase
             else if (parentVM.IsRenameMode) parentVM.OnItemClicked(this);
             else parentVM.ShowDetailCommand.Execute(record);
         });
-        try
+
+        LoadThumbnailAsync();
+    }
+
+    private async void LoadThumbnailAsync()
+    {
+        await Task.Run(() => 
         {
-            if (File.Exists(record.ThumbnailPath))
+            try
             {
-                using (var stream = File.OpenRead(record.ThumbnailPath))
+                if (File.Exists(Record.ThumbnailPath))
                 {
-                    Thumbnail = Bitmap.DecodeToWidth(stream, 320);
+                    using (var stream = File.OpenRead(Record.ThumbnailPath))
+                    {
+                        // 【爆速化ポイント2】読み込みサイズを320pxから240px(ボタン幅ぴったり)に縮小
+                        var bmp = Bitmap.DecodeToWidth(stream, 240);
+                        Dispatcher.UIThread.Post(() => Thumbnail = bmp);
+                    }
                 }
             }
-        }
-        catch (Exception) { Thumbnail = null; }
+            catch (Exception) { /* エラー時はnull */ }
+        });
     }
 }
 
