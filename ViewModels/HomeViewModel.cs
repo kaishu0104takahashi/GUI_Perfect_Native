@@ -1,5 +1,8 @@
 using System;
 using System.Diagnostics;
+using System.Net.Sockets;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Input;
 
@@ -8,50 +11,53 @@ namespace GUI_Perfect.ViewModels;
 public class HomeViewModel : ViewModelBase
 {
     private readonly MainViewModel _main;
-    public ICommand CaptureCommand { get; } 
+    public ICommand CaptureCommand { get; }
     public ICommand GalleryCommand { get; }
     public ICommand MeasurementCommand { get; }
     public ICommand TimeSettingCommand { get; }
-    
-    // 3つの終了コマンド
-    public ICommand StopCommand { get; }            // アプリ終了
-    public ICommand ShutdownJetsonCommand { get; }  // Jetsonのみ停止
-    public ICommand ShutdownAllCommand { get; }     // 全電源オフ (Jetson + Raspi)
-    
+
+    public ICommand StopCommand { get; }            
+    public ICommand ShutdownJetsonCommand { get; }  
+    public ICommand ShutdownAllCommand { get; }     
+
     public HomeViewModel(MainViewModel main)
     {
         _main = main;
         CaptureCommand = new RelayCommand(() => _main.Navigate(new SimpleInspectViewModel(_main)));
         GalleryCommand = new RelayCommand(() => _main.Navigate(new GalleryViewModel(_main)));
-        MeasurementCommand = new RelayCommand(() => _main.Navigate(new MeasurementViewModel(_main)));
-        
-        TimeSettingCommand = new RelayCommand(() => 
+
+        // --- 測定モードへ移動（変更箇所） ---
+        MeasurementCommand = new RelayCommand(async () => 
         {
-             _main.Navigate(new TimeSettingViewModel(() => 
+            // YUV422へ変更コマンドを送信
+            await SendTcpCommandAsync("change_format", new { format = "YUV422" });
+            
+            // 画面遷移
+            _main.Navigate(new MeasurementViewModel(_main));
+        });
+
+        TimeSettingCommand = new RelayCommand(() =>
+        {
+             _main.Navigate(new TimeSettingViewModel(() =>
              {
                  _main.Navigate(new HomeViewModel(_main));
              }));
         });
-        
-        // 1. アプリ終了
+
+        // アプリ終了
         StopCommand = new RelayCommand(_main.ShutdownApplication);
 
-        // 2. Jetsonのみ停止
-        ShutdownJetsonCommand = new RelayCommand(async () => 
+        // Jetson停止
+        ShutdownJetsonCommand = new RelayCommand(async () =>
         {
-            await ShutdownJetsonAsync();
+            await SendTcpCommandAsync("shutdown", new { });
         });
 
-        // 3. 全電源オフ (Jetson -> Raspi)
-        ShutdownAllCommand = new RelayCommand(async () => 
+        // 全電源オフ
+        ShutdownAllCommand = new RelayCommand(async () =>
         {
-            // まずJetsonを停止
-            await ShutdownJetsonAsync();
-
-            // 通信バッファ時間を置いて
+            await SendTcpCommandAsync("shutdown", new { });
             await Task.Delay(1000);
-
-            // 自分(Raspi)を停止
             try
             {
                 var psiLocal = new ProcessStartInfo
@@ -70,29 +76,47 @@ public class HomeViewModel : ViewModelBase
         });
     }
 
-    // Jetson停止処理の共通メソッド
-    private async Task ShutdownJetsonAsync()
+    // TCPコマンド送信用の共通メソッド
+    private async Task SendTcpCommandAsync(string commandName, object argsObj)
     {
         try
         {
-            string remoteUser = "shikoku-pc"; 
             string remoteIp = "192.168.76.230";
+            int remotePort = 55555; 
 
-            var psiRemote = new ProcessStartInfo
+            var cmdData = new
             {
-                FileName = "ssh",
-                // タイムアウト3秒、パスワードなしでshutdownコマンド送信
-                Arguments = $"{remoteUser}@{remoteIp} -o StrictHostKeyChecking=no -o ConnectTimeout=3 \"sudo shutdown -h now\"",
-                UseShellExecute = false,
-                CreateNoWindow = true
+                type = "cmd",
+                command = commandName,
+                args = argsObj
             };
-            
-            var p = Process.Start(psiRemote);
-            if (p != null) await p.WaitForExitAsync();
+
+            string jsonString = JsonSerializer.Serialize(cmdData);
+            byte[] data = Encoding.UTF8.GetBytes(jsonString);
+
+            using (var tcpClient = new TcpClient())
+            {
+                // 接続タイムアウトを設ける（簡易実装）
+                var connectTask = tcpClient.ConnectAsync(remoteIp, remotePort);
+                if (await Task.WhenAny(connectTask, Task.Delay(1000)) == connectTask)
+                {
+                    // 接続成功
+                    await connectTask; 
+                    using (var stream = tcpClient.GetStream())
+                    {
+                        await stream.WriteAsync(data, 0, data.Length);
+                    }
+                    Console.WriteLine($"[TCP Sent] {jsonString}");
+                }
+                else
+                {
+                    Console.WriteLine("[TCP Error] Connection Timed out");
+                }
+            }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Jetson Shutdown Error: {ex.Message}");
+            Console.WriteLine($"TCP Send Error: {ex.Message}");
         }
     }
 }
