@@ -1,21 +1,31 @@
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
-using System.Net.Sockets;
-using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 
 namespace GUI_Perfect.ViewModels;
 
 public class HomeViewModel : ViewModelBase
 {
     private readonly MainViewModel _main;
+    
+    // View側はこのプロパティ経由で画像を取得する
+    public Bitmap? CameraImage => _main.CameraImage;
+
+    private string _currentDateTime = "";
+    public string CurrentDateTime
+    {
+        get => _currentDateTime;
+        set { _currentDateTime = value; RaisePropertyChanged(); }
+    }
+
     public ICommand CaptureCommand { get; }
     public ICommand GalleryCommand { get; }
     public ICommand MeasurementCommand { get; }
     public ICommand TimeSettingCommand { get; }
-
     public ICommand StopCommand { get; }            
     public ICommand ShutdownJetsonCommand { get; }  
     public ICommand ShutdownAllCommand { get; }     
@@ -23,40 +33,56 @@ public class HomeViewModel : ViewModelBase
     public HomeViewModel(MainViewModel main)
     {
         _main = main;
-        CaptureCommand = new RelayCommand(() => _main.Navigate(new SimpleInspectViewModel(_main)));
-        GalleryCommand = new RelayCommand(() => _main.Navigate(new GalleryViewModel(_main)));
+        
+        // 【重要】MainViewModelの映像更新イベントを購読する
+        _main.PropertyChanged += MainViewModel_PropertyChanged;
+        
+        UpdateDateTime();
+        DispatcherTimer.Run(() => 
+        {
+            UpdateDateTime();
+            return true; 
+        }, TimeSpan.FromSeconds(1));
 
-        // --- 測定モードへ移動（変更箇所） ---
+        // 各画面へ遷移する際は、イベント購読を解除(Cleanup)してから移動する
+        CaptureCommand = new RelayCommand(() => 
+        {
+            Cleanup();
+            _main.Navigate(new SimpleInspectViewModel(_main));
+        });
+
+        GalleryCommand = new RelayCommand(() => 
+        {
+            Cleanup();
+            _main.Navigate(new GalleryViewModel(_main));
+        });
+
         MeasurementCommand = new RelayCommand(async () => 
         {
-            // YUV422へ変更コマンドを送信
-            await SendTcpCommandAsync("change_format", new { format = "YUV422" });
-            
-            // 画面遷移
+            Cleanup();
+            await _main.TcpServer.SendCommandAsync("change_format", new { format = "YUV422" });
             _main.Navigate(new MeasurementViewModel(_main));
         });
 
         TimeSettingCommand = new RelayCommand(() =>
         {
+             Cleanup();
              _main.Navigate(new TimeSettingViewModel(() =>
              {
                  _main.Navigate(new HomeViewModel(_main));
              }));
         });
 
-        // アプリ終了
         StopCommand = new RelayCommand(_main.ShutdownApplication);
 
-        // Jetson停止
         ShutdownJetsonCommand = new RelayCommand(async () =>
         {
-            await SendTcpCommandAsync("shutdown", new { });
+            await _main.TcpServer.SendCommandAsync("shutdown", new { });
         });
 
-        // 全電源オフ
         ShutdownAllCommand = new RelayCommand(async () =>
         {
-            await SendTcpCommandAsync("shutdown", new { });
+            await _main.TcpServer.SendCommandAsync("shutdown", new { });
             await Task.Delay(1000);
             try
             {
@@ -76,47 +102,22 @@ public class HomeViewModel : ViewModelBase
         });
     }
 
-    // TCPコマンド送信用の共通メソッド
-    private async Task SendTcpCommandAsync(string commandName, object argsObj)
+    private void Cleanup()
     {
-        try
+        _main.PropertyChanged -= MainViewModel_PropertyChanged;
+    }
+
+    // MainViewModelのプロパティが変わったら、HomeViewModelとしても通知を出す
+    private void MainViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.CameraImage))
         {
-            string remoteIp = "192.168.76.230";
-            int remotePort = 55555; 
-
-            var cmdData = new
-            {
-                type = "cmd",
-                command = commandName,
-                args = argsObj
-            };
-
-            string jsonString = JsonSerializer.Serialize(cmdData);
-            byte[] data = Encoding.UTF8.GetBytes(jsonString);
-
-            using (var tcpClient = new TcpClient())
-            {
-                // 接続タイムアウトを設ける（簡易実装）
-                var connectTask = tcpClient.ConnectAsync(remoteIp, remotePort);
-                if (await Task.WhenAny(connectTask, Task.Delay(1000)) == connectTask)
-                {
-                    // 接続成功
-                    await connectTask; 
-                    using (var stream = tcpClient.GetStream())
-                    {
-                        await stream.WriteAsync(data, 0, data.Length);
-                    }
-                    Console.WriteLine($"[TCP Sent] {jsonString}");
-                }
-                else
-                {
-                    Console.WriteLine("[TCP Error] Connection Timed out");
-                }
-            }
+            RaisePropertyChanged(nameof(CameraImage));
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"TCP Send Error: {ex.Message}");
-        }
+    }
+
+    private void UpdateDateTime()
+    {
+        CurrentDateTime = DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss");
     }
 }

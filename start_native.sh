@@ -1,13 +1,22 @@
 #!/bin/bash
 
-# 1. .NETの場所を明確に指定 (これが足りていませんでした)
-export DOTNET_ROOT=$HOME/.dotnet
+# アプリ名
+APP_NAME="GUI_Perfect"
 
-# 2. パスも通しておく
-export PATH=$PATH:$HOME/.dotnet:$HOME/.dotnet/tools
+# すでに起動しているかチェック (プロセスIDを探す)
+if pgrep -x "$APP_NAME" > /dev/null
+then
+    # 起動していたら何もしないで終了
+    echo "$APP_NAME is already running."
+    sleep 1 # ターミナルが一瞬で消えると不安になる場合のため少し待つ（任意）
+    exit 0
+fi
 
-# 3. プロジェクトフォルダへ移動
-cd /home/shikoku-pc/avalonia/GUI_Perfect
+# まだ起動していなければ起動する
+export DISPLAY=:0
 
-# 4. ビルド済みアプリを直接実行
-./bin/Debug/net9.0/GUI_Perfect
+# ビルドしたバイナリがあるフォルダへ移動
+cd /home/shikoku-pc/gui_bin
+
+# アプリ実行
+./$APP_NAME

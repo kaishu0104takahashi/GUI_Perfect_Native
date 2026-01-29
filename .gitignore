@@ -1,7 +1,8 @@
-bin/
-obj/
+[Bb]in/
+[Oo]bj/
 .vscode/
 .idea/
 *.user
-*.pdb
-.DS_Store
+*.suo
+*.user
+gui_bin/

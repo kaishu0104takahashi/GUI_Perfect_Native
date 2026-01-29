@@ -3,36 +3,33 @@
              xmlns:vm="clr-namespace:GUI_Perfect.ViewModels"
              x:Class="GUI_Perfect.Views.TimeSettingView"
              x:DataType="vm:TimeSettingViewModel">
-    
+
     <UserControl.Styles>
-        <Style Selector="Button.Adj">
-            <Setter Property="Width" Value="100"/>
+        <Style Selector="TextBlock.Number">
+            <Setter Property="FontSize" Value="40"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="5,0"/>
+            <Setter Property="Width" Value="60"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.Label">
+            <Setter Property="FontSize" Value="24"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="#666"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
+        </Style>
+        <Style Selector="Button.UpDn">
+            <Setter Property="Width" Value="75"/>
             <Setter Property="Height" Value="60"/>
             <Setter Property="FontSize" Value="24"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="Background" Value="#E0E0E0"/>
-            <Setter Property="CornerRadius" Value="10"/>
-            <Setter Property="Margin" Value="5"/>
-        </Style>
-        <Style Selector="TextBlock.Val">
-            <Setter Property="FontSize" Value="50"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="HorizontalAlignment" Value="Center"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Margin" Value="10,0"/>
-            <Setter Property="Width" Value="80"/>
-            <Setter Property="TextAlignment" Value="Center"/>
-        </Style>
-        <Style Selector="TextBlock.YearVal">
-            <Setter Property="FontSize" Value="50"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="HorizontalAlignment" Value="Center"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Margin" Value="10,0"/>
-            <Setter Property="Width" Value="140"/>
-            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="Background" Value="#DDDDDD"/>
+            <Setter Property="CornerRadius" Value="8"/>
         </Style>
     </UserControl.Styles>
 
@@ -41,60 +38,63 @@
             <TextBlock Text="システム時刻設定" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" Foreground="#333333"/>
         </Border>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="5">
             
             <StackPanel>
-                <Button Classes="Adj" Content="▲" Command="{Binding IncreaseCommand}" CommandParameter="Year"/>
-                <TextBlock Classes="YearVal" Text="{Binding Year}"/>
-                <Button Classes="Adj" Content="▼" Command="{Binding DecreaseCommand}" CommandParameter="Year"/>
-                <TextBlock Text="年" HorizontalAlignment="Center" FontSize="18" Foreground="#666"/>
+                <Button Classes="UpDn" Content="▲" Command="{Binding UpYearCommand}"/>
+                <TextBlock Classes="Number" Text="{Binding Year}" Width="100"/>
+                <Button Classes="UpDn" Content="▼" Command="{Binding DownYearCommand}"/>
             </StackPanel>
-
-            <TextBlock Text="/" FontSize="40" VerticalAlignment="Center" Margin="0,0,0,30" Foreground="#AAA"/>
+            <TextBlock Classes="Label" Text="年"/>
 
             <StackPanel>
-                <Button Classes="Adj" Content="▲" Command="{Binding IncreaseCommand}" CommandParameter="Month"/>
-                <TextBlock Classes="Val" Text="{Binding Month}"/>
-                <Button Classes="Adj" Content="▼" Command="{Binding DecreaseCommand}" CommandParameter="Month"/>
-                <TextBlock Text="月" HorizontalAlignment="Center" FontSize="18" Foreground="#666"/>
+                <Button Classes="UpDn" Content="▲" Command="{Binding UpMonthCommand}"/>
+                <TextBlock Classes="Number" Text="{Binding Month, StringFormat={}{0:D2}}"/>
+                <Button Classes="UpDn" Content="▼" Command="{Binding DownMonthCommand}"/>
             </StackPanel>
-
-            <TextBlock Text="/" FontSize="40" VerticalAlignment="Center" Margin="0,0,0,30" Foreground="#AAA"/>
+            <TextBlock Classes="Label" Text="月"/>
 
             <StackPanel>
-                <Button Classes="Adj" Content="▲" Command="{Binding IncreaseCommand}" CommandParameter="Day"/>
-                <TextBlock Classes="Val" Text="{Binding Day}"/>
-                <Button Classes="Adj" Content="▼" Command="{Binding DecreaseCommand}" CommandParameter="Day"/>
-                <TextBlock Text="日" HorizontalAlignment="Center" FontSize="18" Foreground="#666"/>
+                <Button Classes="UpDn" Content="▲" Command="{Binding UpDayCommand}"/>
+                <TextBlock Classes="Number" Text="{Binding Day, StringFormat={}{0:D2}}"/>
+                <Button Classes="UpDn" Content="▼" Command="{Binding DownDayCommand}"/>
             </StackPanel>
+            <TextBlock Classes="Label" Text="日"/>
 
-            <Border Width="40"/>
+            <Border Width="40" />
 
             <StackPanel>
-                <Button Classes="Adj" Content="▲" Command="{Binding IncreaseCommand}" CommandParameter="Hour"/>
-                <TextBlock Classes="Val" Text="{Binding Hour}"/>
-                <Button Classes="Adj" Content="▼" Command="{Binding DecreaseCommand}" CommandParameter="Hour"/>
-                <TextBlock Text="時" HorizontalAlignment="Center" FontSize="18" Foreground="#666"/>
+                <Button Classes="UpDn" Content="▲" Command="{Binding UpHourCommand}"/>
+                <TextBlock Classes="Number" Text="{Binding Hour, StringFormat={}{0:D2}}"/>
+                <Button Classes="UpDn" Content="▼" Command="{Binding DownHourCommand}"/>
             </StackPanel>
-
-            <TextBlock Text=":" FontSize="40" VerticalAlignment="Center" Margin="0,0,0,30" Foreground="#AAA"/>
+            <TextBlock Classes="Label" Text=":" FontSize="40" Margin="5,0"/>
 
             <StackPanel>
-                <Button Classes="Adj" Content="▲" Command="{Binding IncreaseCommand}" CommandParameter="Minute"/>
-                <TextBlock Classes="Val" Text="{Binding Minute}"/>
-                <Button Classes="Adj" Content="▼" Command="{Binding DecreaseCommand}" CommandParameter="Minute"/>
-                <TextBlock Text="分" HorizontalAlignment="Center" FontSize="18" Foreground="#666"/>
+                <Button Classes="UpDn" Content="▲" Command="{Binding UpMinuteCommand}"/>
+                <TextBlock Classes="Number" Text="{Binding Minute, StringFormat={}{0:D2}}"/>
+                <Button Classes="UpDn" Content="▼" Command="{Binding DownMinuteCommand}"/>
+            </StackPanel>
+            <TextBlock Classes="Label" Text=":" FontSize="40" Margin="5,0"/>
+
+            <StackPanel>
+                <Button Classes="UpDn" Content="▲" Command="{Binding UpSecondCommand}"/>
+                <TextBlock Classes="Number" Text="{Binding Second, StringFormat={}{0:D2}}" Foreground="#007ACC"/>
+                <Button Classes="UpDn" Content="▼" Command="{Binding DownSecondCommand}"/>
             </StackPanel>
 
         </StackPanel>
 
         <Grid Grid.Row="2" ColumnDefinitions="*, *" Margin="30">
-            <Button Grid.Column="0" Content="キャンセル" Command="{Binding BackCommand}" 
-                    Height="80" Margin="20" HorizontalAlignment="Stretch" FontSize="24" Background="#AAA" Foreground="White"
-                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center" CornerRadius="12"/>
-            <Button Grid.Column="1" Content="設定反映" Command="{Binding ApplyCommand}" 
-                    Height="80" Margin="20" HorizontalAlignment="Stretch" FontSize="24" Background="#007ACC" Foreground="White"
-                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center" CornerRadius="12"/>
+            <Button Grid.Column="0" Content="キャンセル" Command="{Binding CancelCommand}"
+                    HorizontalAlignment="Stretch" Height="70" FontSize="20" FontWeight="Bold"
+                    Margin="0,0,15,0" Background="#AAAAAA" Foreground="Black"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center" CornerRadius="8"/>
+            
+            <Button Grid.Column="1" Content="設 定" Command="{Binding SaveCommand}"
+                    HorizontalAlignment="Stretch" Height="70" FontSize="20" FontWeight="Bold"
+                    Margin="15,0,0,0" Background="#007ACC" Foreground="White"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center" CornerRadius="8"/>
         </Grid>
     </Grid>
 </UserControl>
