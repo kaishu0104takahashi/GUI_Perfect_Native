@@ -24,7 +24,9 @@ public class MainViewModel : ViewModelBase
     }
 
     private readonly UdpVideoReceiver _videoReceiver;
-    // TcpCommandServer は削除しました
+    
+    // 【復活】アプリ全体で共有するTCPサーバー (Port 55555)
+    public TcpJsonClient TcpServer { get; }
 
     private Bitmap? _cameraImage;
     public Bitmap? CameraImage
@@ -50,7 +52,7 @@ public class MainViewModel : ViewModelBase
 
     public MainViewModel()
     {
-        // 映像受信開始 (Port 50000)
+        // 1. 映像受信開始 (Port 50000)
         _videoReceiver = new UdpVideoReceiver(50000);
         _videoReceiver.OnFrameReceived += (bmp) =>
         {
@@ -60,6 +62,10 @@ public class MainViewModel : ViewModelBase
             });
         };
         _videoReceiver.Start();
+
+        // 2. コマンド送受信用サーバー開始 (Port 55555)
+        TcpServer = new TcpJsonClient(55555);
+        TcpServer.Start();
 
         // 初期画面は時刻設定から
         _currentViewModel = new TimeSettingViewModel(() =>
@@ -76,6 +82,7 @@ public class MainViewModel : ViewModelBase
     public void ShutdownApplication()
     {
         _videoReceiver.Stop();
+        TcpServer.Stop(); // サーバーも停止
         
         if (Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
         {

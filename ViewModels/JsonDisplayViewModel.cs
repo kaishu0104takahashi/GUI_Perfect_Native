@@ -9,12 +9,11 @@ namespace GUI_Perfect.ViewModels;
 public class JsonDisplayViewModel : ViewModelBase
 {
     private readonly MainViewModel _main;
-    private readonly TcpJsonClient _server;
 
     // 受信ログを表示するためのコレクション
     public ObservableCollection<string> JsonLogs { get; } = new();
 
-    private string _statusText = "初期化中...";
+    private string _statusText = "モニタリング中...";
     public string StatusText
     {
         get => _statusText;
@@ -38,7 +37,7 @@ public class JsonDisplayViewModel : ViewModelBase
         // 戻るボタン
         BackCommand = new RelayCommand(() =>
         {
-            Cleanup();
+            Cleanup(); // イベント購読解除
             _main.IsCameraPaused = false; // カメラ再開
             _main.Navigate(new HomeViewModel(_main));
         });
@@ -50,32 +49,33 @@ public class JsonDisplayViewModel : ViewModelBase
             LatestJson = "";
         });
 
-        // ポート 55555 で待ち受け開始（競合は解消済み）
-        _server = new TcpJsonClient(55555);
-
-        _server.OnStatusChanged += (msg) =>
-        {
-            Dispatcher.UIThread.Post(() => StatusText = msg);
-        };
-
-        _server.OnJsonReceived += (json) =>
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                LatestJson = json;
-
-                string timestamp = DateTime.Now.ToString("HH:mm:ss");
-                JsonLogs.Insert(0, $"[{timestamp}] {json}");
-                
-                if (JsonLogs.Count > 100) JsonLogs.RemoveAt(JsonLogs.Count - 1);
-            });
-        };
-
-        _server.Start();
+        // 【変更】自分でサーバーを立てず、MainViewModelのサーバーのイベントを購読する
+        _main.TcpServer.OnStatusChanged += OnStatusChanged;
+        _main.TcpServer.OnJsonReceived += OnJsonReceived;
     }
 
     private void Cleanup()
     {
-        _server.Stop();
+        // 画面を抜けるときは購読を解除する（サーバー自体は止めない）
+        _main.TcpServer.OnStatusChanged -= OnStatusChanged;
+        _main.TcpServer.OnJsonReceived -= OnJsonReceived;
+    }
+
+    private void OnStatusChanged(string msg)
+    {
+        Dispatcher.UIThread.Post(() => StatusText = msg);
+    }
+
+    private void OnJsonReceived(string json)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            LatestJson = json;
+
+            string timestamp = DateTime.Now.ToString("HH:mm:ss");
+            JsonLogs.Insert(0, $"[{timestamp}] {json}");
+            
+            if (JsonLogs.Count > 100) JsonLogs.RemoveAt(JsonLogs.Count - 1);
+        });
     }
 }

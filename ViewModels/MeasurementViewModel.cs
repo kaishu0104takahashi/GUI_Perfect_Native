@@ -49,6 +49,7 @@ namespace GUI_Perfect.ViewModels
             _mainViewModel.PropertyChanged += MainViewModel_PropertyChanged;
 
             ExecuteMeasurementCommand = new RelayCommand<object>(async _ => await ExecuteMeasurement());
+            
             RetryCommand = new RelayCommand(() =>
             {
                 CapturedImage = null;
@@ -56,9 +57,16 @@ namespace GUI_Perfect.ViewModels
                 ResultText = "";
             });
             
-            // 【修正】async を削除しました（awaitする処理がないため）
-            BackCommand = new RelayCommand(() =>
+            // 【修正】戻るボタン: MJPEGに戻すJSONを送信
+            BackCommand = new RelayCommand(async () =>
             {
+                await _mainViewModel.TcpServer.SendJsonAsync(new 
+                { 
+                    type = "cmd", 
+                    command = "change_format", 
+                    args = new { format = "MJPEG" } 
+                });
+
                 _mainViewModel.PropertyChanged -= MainViewModel_PropertyChanged;
                 _mainViewModel.Navigate(new HomeViewModel(_mainViewModel));
             });

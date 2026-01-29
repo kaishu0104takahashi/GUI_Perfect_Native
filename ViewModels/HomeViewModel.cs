@@ -42,22 +42,38 @@ public class HomeViewModel : ViewModelBase
             return true; 
         }, TimeSpan.FromSeconds(1));
 
-        CaptureCommand = new RelayCommand(() => 
+        // 【撮影モード遷移】YUV422を送信 (ここが動いていない可能性があるので再定義)
+        CaptureCommand = new RelayCommand(async () => 
         {
+            await _main.TcpServer.SendJsonAsync(new 
+            { 
+                type = "cmd", 
+                command = "change_format", 
+                args = new { format = "YUV422" } 
+            });
+
             Cleanup();
             _main.Navigate(new SimpleInspectViewModel(_main));
         });
+
+        // 【測定モード遷移】YUV422を送信 (これは動いている)
+        MeasurementCommand = new RelayCommand(async () => 
+        {
+            await _main.TcpServer.SendJsonAsync(new 
+            { 
+                type = "cmd", 
+                command = "change_format", 
+                args = new { format = "YUV422" } 
+            });
+            
+            Cleanup();
+            _main.Navigate(new MeasurementViewModel(_main));
+        });
+
         GalleryCommand = new RelayCommand(() => 
         {
             Cleanup();
             _main.Navigate(new GalleryViewModel(_main));
-        });
-        
-        // 【修正】async を削除
-        MeasurementCommand = new RelayCommand(() => 
-        {
-            Cleanup();
-            _main.Navigate(new MeasurementViewModel(_main));
         });
 
         TimeSettingCommand = new RelayCommand(() =>
@@ -78,16 +94,29 @@ public class HomeViewModel : ViewModelBase
 
         StopCommand = new RelayCommand(_main.ShutdownApplication);
 
-        // 【修正】async を削除（処理がないため）
-        ShutdownJetsonCommand = new RelayCommand(() =>
+        // 【Jetsonシャットダウン】(これも動いている)
+        ShutdownJetsonCommand = new RelayCommand(async () =>
         {
-            // 何もしない（将来的に実装する場合はここに記述）
+            await _main.TcpServer.SendJsonAsync(new 
+            { 
+                type = "cmd", 
+                command = "shutdown", 
+                args = new { } 
+            });
         });
 
+        // 【全電源オフ】(これも動いている)
         ShutdownAllCommand = new RelayCommand(async () =>
         {
-            // ここは await Task.Delay を使うので async のままでOK
-            await Task.Delay(500);
+            await _main.TcpServer.SendJsonAsync(new 
+            { 
+                type = "cmd", 
+                command = "shutdown", 
+                args = new { } 
+            });
+            
+            await Task.Delay(1000);
+            
             try
             {
                 var psiLocal = new ProcessStartInfo

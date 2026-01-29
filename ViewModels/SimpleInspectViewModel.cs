@@ -44,26 +44,27 @@ public class SimpleInspectViewModel : ViewModelBase
         Main = main;
         _dbService = new DatabaseService();
 
-        BackCommand = new RelayCommand(() => 
+        // 【修正】戻るボタン: MJPEGに戻すJSONを送信してからホームへ
+        BackCommand = new RelayCommand(async () => 
         {
+            await Main.TcpServer.SendJsonAsync(new 
+            { 
+                type = "cmd", 
+                command = "change_format", 
+                args = new { format = "MJPEG" } 
+            });
+
             Main.IsCameraPaused = false;
             Main.Navigate(new HomeViewModel(Main));
         });
 
-        // 【修正】撮影ロジックの改善
         CaptureCommand = new RelayCommand(() =>
         {
             if (Main.CameraImage != null)
             {
-                // 1. 先にカメラを止める（これで映像の更新が止まる）
                 Main.IsCameraPaused = true;
-
-                // 2. 現在の映像を静止画として保持する
                 CapturedImage = Main.CameraImage;
-                
-                // 3. 表示切り替え
                 IsCaptured = true;
-                
                 StatusMessage = "この画像で保存しますか？";
             }
         });
@@ -72,12 +73,11 @@ public class SimpleInspectViewModel : ViewModelBase
         {
             CapturedImage = null;
             IsCaptured = false;
-            
-            // カメラ再開
             Main.IsCameraPaused = false;
             StatusMessage = "検査対象をセットして\n撮影ボタンを押してください";
         });
 
+        // 【修正】保存ボタン: 保存完了後にMJPEGに戻すJSONを送信
         SaveCommand = new RelayCommand(async () =>
         {
             if (CapturedImage == null) return;
@@ -109,6 +109,14 @@ public class SimpleInspectViewModel : ViewModelBase
                     SimpleOmotePath = filePath
                 };
                 _dbService.InsertInspection(record);
+
+                // MJPEGに戻すJSON送信
+                await Main.TcpServer.SendJsonAsync(new 
+                { 
+                    type = "cmd", 
+                    command = "change_format", 
+                    args = new { format = "MJPEG" } 
+                });
 
                 Main.IsCameraPaused = false;
                 Main.Navigate(new HomeViewModel(Main));
