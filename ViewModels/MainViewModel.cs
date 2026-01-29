@@ -55,7 +55,7 @@ public class MainViewModel : ViewModelBase
         TcpServer.Start();
 
         // 映像受信開始
-        _videoReceiver = new UdpVideoReceiver(5000);
+        _videoReceiver = new UdpVideoReceiver(50000);
         _videoReceiver.OnFrameReceived += (bmp) =>
         {
             Dispatcher.UIThread.Post(() =>
