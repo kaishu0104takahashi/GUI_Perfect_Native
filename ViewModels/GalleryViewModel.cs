@@ -412,7 +412,7 @@ public class GalleryViewModel : ViewModelBase
         var filteredQuery = _allRecords.Where(r =>
         {
             bool matchText = string.IsNullOrEmpty(SearchText) ||
-                             r.SaveName.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
+                             r.SaveName.Contains(SearchText, StringComparison.Ordinal) ||
                              r.Date.Contains(SearchText);
             bool matchType = (r.Type == 0 && ShowSimple) || (r.Type == 1 && ShowPrecision);
             return matchText && matchType;
