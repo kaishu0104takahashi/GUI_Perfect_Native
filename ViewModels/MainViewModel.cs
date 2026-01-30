@@ -16,7 +16,7 @@ public class MainViewModel : ViewModelBase
         set { _currentViewModel = value; RaisePropertyChanged(); }
     }
 
-    private bool _isFullScreen = true; 
+    private bool _isFullScreen = true;
     public bool IsFullScreen
     {
         get => _isFullScreen;
@@ -24,7 +24,7 @@ public class MainViewModel : ViewModelBase
     }
 
     private readonly UdpVideoReceiver _videoReceiver;
-    public TcpCommandServer TcpServer { get; }
+    // TcpCommandServer は削除しました
 
     private Bitmap? _cameraImage;
     public Bitmap? CameraImage
@@ -50,11 +50,7 @@ public class MainViewModel : ViewModelBase
 
     public MainViewModel()
     {
-        // TCPサーバー開始
-        TcpServer = new TcpCommandServer();
-        TcpServer.Start();
-
-        // 映像受信開始
+        // 映像受信開始 (Port 50000)
         _videoReceiver = new UdpVideoReceiver(50000);
         _videoReceiver.OnFrameReceived += (bmp) =>
         {
@@ -65,10 +61,9 @@ public class MainViewModel : ViewModelBase
         };
         _videoReceiver.Start();
 
-        // 【修正点】起動時は「時刻設定画面」から開始する
+        // 初期画面は時刻設定から
         _currentViewModel = new TimeSettingViewModel(() =>
         {
-            // 時刻設定が終わったらホーム画面へ移動
             Navigate(new HomeViewModel(this));
         });
     }
@@ -81,7 +76,6 @@ public class MainViewModel : ViewModelBase
     public void ShutdownApplication()
     {
         _videoReceiver.Stop();
-        TcpServer.Stop();
         
         if (Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
         {

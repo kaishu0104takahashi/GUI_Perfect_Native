@@ -12,7 +12,6 @@ public class HomeViewModel : ViewModelBase
 {
     private readonly MainViewModel _main;
     
-    // View側はこのプロパティ経由で画像を取得する
     public Bitmap? CameraImage => _main.CameraImage;
 
     private string _currentDateTime = "";
@@ -26,6 +25,7 @@ public class HomeViewModel : ViewModelBase
     public ICommand GalleryCommand { get; }
     public ICommand MeasurementCommand { get; }
     public ICommand TimeSettingCommand { get; }
+    public ICommand JsonModeCommand { get; }
     public ICommand StopCommand { get; }            
     public ICommand ShutdownJetsonCommand { get; }  
     public ICommand ShutdownAllCommand { get; }     
@@ -33,8 +33,6 @@ public class HomeViewModel : ViewModelBase
     public HomeViewModel(MainViewModel main)
     {
         _main = main;
-        
-        // 【重要】MainViewModelの映像更新イベントを購読する
         _main.PropertyChanged += MainViewModel_PropertyChanged;
         
         UpdateDateTime();
@@ -44,23 +42,21 @@ public class HomeViewModel : ViewModelBase
             return true; 
         }, TimeSpan.FromSeconds(1));
 
-        // 各画面へ遷移する際は、イベント購読を解除(Cleanup)してから移動する
         CaptureCommand = new RelayCommand(() => 
         {
             Cleanup();
             _main.Navigate(new SimpleInspectViewModel(_main));
         });
-
         GalleryCommand = new RelayCommand(() => 
         {
             Cleanup();
             _main.Navigate(new GalleryViewModel(_main));
         });
-
-        MeasurementCommand = new RelayCommand(async () => 
+        
+        // 【修正】async を削除
+        MeasurementCommand = new RelayCommand(() => 
         {
             Cleanup();
-            await _main.TcpServer.SendCommandAsync("change_format", new { format = "YUV422" });
             _main.Navigate(new MeasurementViewModel(_main));
         });
 
@@ -72,18 +68,26 @@ public class HomeViewModel : ViewModelBase
                  _main.Navigate(new HomeViewModel(_main));
              }));
         });
+        
+        JsonModeCommand = new RelayCommand(() =>
+        {
+            Cleanup();
+            _main.IsCameraPaused = true; 
+            _main.Navigate(new JsonDisplayViewModel(_main));
+        });
 
         StopCommand = new RelayCommand(_main.ShutdownApplication);
 
-        ShutdownJetsonCommand = new RelayCommand(async () =>
+        // 【修正】async を削除（処理がないため）
+        ShutdownJetsonCommand = new RelayCommand(() =>
         {
-            await _main.TcpServer.SendCommandAsync("shutdown", new { });
+            // 何もしない（将来的に実装する場合はここに記述）
         });
 
         ShutdownAllCommand = new RelayCommand(async () =>
         {
-            await _main.TcpServer.SendCommandAsync("shutdown", new { });
-            await Task.Delay(1000);
+            // ここは await Task.Delay を使うので async のままでOK
+            await Task.Delay(500);
             try
             {
                 var psiLocal = new ProcessStartInfo
@@ -107,7 +111,6 @@ public class HomeViewModel : ViewModelBase
         _main.PropertyChanged -= MainViewModel_PropertyChanged;
     }
 
-    // MainViewModelのプロパティが変わったら、HomeViewModelとしても通知を出す
     private void MainViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(MainViewModel.CameraImage))

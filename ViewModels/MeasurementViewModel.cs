@@ -9,7 +9,6 @@ namespace GUI_Perfect.ViewModels
     public class MeasurementViewModel : ViewModelBase
     {
         private readonly MainViewModel _mainViewModel;
-
         public Bitmap? LiveImage => _mainViewModel.CameraImage;
 
         private Bitmap? _capturedImage;
@@ -50,18 +49,16 @@ namespace GUI_Perfect.ViewModels
             _mainViewModel.PropertyChanged += MainViewModel_PropertyChanged;
 
             ExecuteMeasurementCommand = new RelayCommand<object>(async _ => await ExecuteMeasurement());
-
             RetryCommand = new RelayCommand(() =>
             {
                 CapturedImage = null;
                 HasResult = false;
                 ResultText = "";
             });
-
-            // 戻るボタン（TCPコマンド送信）
-            BackCommand = new RelayCommand(async () =>
+            
+            // 【修正】async を削除しました（awaitする処理がないため）
+            BackCommand = new RelayCommand(() =>
             {
-                await _mainViewModel.TcpServer.SendCommandAsync("change_format", new { format = "MJPEG" });
                 _mainViewModel.PropertyChanged -= MainViewModel_PropertyChanged;
                 _mainViewModel.Navigate(new HomeViewModel(_mainViewModel));
             });
